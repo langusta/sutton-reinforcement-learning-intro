@@ -20,9 +20,6 @@ class Arm(object):
     def reward(self):
         pass
 
-    def modify(self):
-        pass
-
     def __call__(self):
         pass
 
@@ -36,10 +33,6 @@ class NormalArm(Arm):
 
     def reward(self):
         return np.random.normal(self.mu, self.sd)
-
-    def modify(self, delta_mu, delta_sd):
-        self.mu += delta_mu
-        self.sd += delta_sd
 
     def __call__(self):
         return self.mu
@@ -116,9 +109,8 @@ class Bandit:
         # line below makes most sense in case of nonstationary arms
         if_best = self.arms[index]() == max([arm() for arm in self.arms])
         # line below is for the case of nonstationary arms
-        # self.arms[index].mu += self.delta_mu()
-        # self.arms[index].sd += self.delta_sd()
-        self.arms[index].modify(self.delta_mu(), self.delta_sd())
+        self.arms[index].mu += self.delta_mu()
+        self.arms[index].sd += self.delta_sd()
         return reward, if_best
 
     def simulate(self, iterations, **kwargs):
@@ -183,21 +175,21 @@ class GradientBandit(Bandit):
         # line below makes most sense in case of nonstationary arms
         if_best = self.arms[index]() == max([arm() for arm in self.arms])
         # line below is for the case of nonstationary arms
-        self.arms[index].modify(self.delta_mu(), self.delta_sd())
+        self.arms[index].mu += self.delta_mu()
+        self.arms[index].sd += self.delta_sd()
         return reward, if_best
 
 
 # %% tests:
 
-def experiment(bandit_constr, arms, action_values, iterations, sessions):
-    cum_rewards = np.array([0.0]*iterations)
-    cum_proc_best = np.array([0.0]*iterations)
-    for s in range(sessions):
-        bandit = bandit_constr(arms(), action_values())
+def experiment(bandits, iterations=1000):
+    cum_rewards = np.zeros(iterations)
+    cum_proc_best = np.zeros(iterations)
+    for bandit in bandits:
         rewards, proc_best = bandit.simulate(iterations)
         cum_rewards += rewards
         cum_proc_best += proc_best
-    return cum_rewards/sessions, cum_proc_best/sessions
+    return cum_rewards/len(bandits), cum_proc_best/len(bandits)
 
 
 def plot_multiple(x, *args):
@@ -211,7 +203,6 @@ def plot_multiple(x, *args):
 
 
 # %%
-
 def get_normal_arms(number=10):
     arms_init = np.random.normal(0, 1, number)
     return [NormalArm(mu, 1) for mu in arms_init]
@@ -221,43 +212,35 @@ def get_sample_actions_values(number=10, estimate=0.0):
     return [SampleAverageActionValue(estimate) for _ in range(number)]
 
 
+def get_eps_greedy_bandits(how_many, arms, action_values, eps=0.1, **kwargs):
+    return [BanditEpsGreedy(arms(), action_values(), eps=eps, **kwargs)
+            for _ in range(how_many)]
+
+
 iterations = 1000
 samples = 500
-rewards_eps01, proc_best_eps01 = \
-                     experiment(lambda a, b: BanditEpsGreedy(a, b, eps=0.1),
-                                get_normal_arms,
-                                get_sample_actions_values,
-                                iterations, samples)
-
-rewards_eps001, proc_best_eps001 = \
-                     experiment(lambda a, b: BanditEpsGreedy(a, b, eps=0.01),
-                                get_normal_arms,
-                                get_sample_actions_values,
-                                iterations, samples)
-
-rewards_eps0, proc_best_eps0 = \
-                     experiment(lambda a, b: BanditEpsGreedy(a, b, eps=0.0),
-                                get_normal_arms,
-                                get_sample_actions_values,
-                                iterations, samples)
-
+outcome = [
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_normal_arms,
+                                      get_sample_actions_values, eps=eps),
+               iterations)
+    for eps in [0.1, 0.01, 0.0]
+]
 
 # %% Eps vs greedy
 
 plot_multiple(range(iterations),
-              (rewards_eps01, "Eps01"),
-              (rewards_eps001, "Eps001"),
-              (rewards_eps0, "Eps0 (Greedy)"))
+              (outcome[0][0], "Eps01"),
+              (outcome[1][0], "Eps001"),
+              (outcome[2][0], "Eps0 (Greedy)"))
 
 plot_multiple(range(iterations),
-              (proc_best_eps01, "Eps01"),
-              (proc_best_eps001, "Eps001"),
-              (proc_best_eps0, "Eps0 (Greedy)"))
+              (outcome[0][1], "Eps01"),
+              (outcome[1][1], "Eps001"),
+              (outcome[2][1], "Eps0 (Greedy)"))
 
 
 # %% Optimistic Greedy vs Eps Greedy 0.1
-
-
 def get_css_actions_value(number=10, estimate=0.0, step_size=0.1):
     return [ConstantStepSizeActionValue(estimate=estimate, step_size=step_size)
             for _ in range(number)]
@@ -270,25 +253,24 @@ def get_css_actions_values_optimistic(number=10):
 iterations = 1000
 samples = 500
 rewards_eps01_css, proc_best_eps01_css = \
-                     experiment(lambda a, b: BanditEpsGreedy(a, b, eps=0.1),
-                                get_normal_arms,
-                                get_css_actions_value,
-                                iterations, samples)
-
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_normal_arms,
+                                      get_css_actions_value, eps=0.1),
+               iterations)
 rewards_greedy_opt, proc_best_greedy_opt = \
-                     experiment(lambda a, b: BanditEpsGreedy(a, b, eps=0.0),
-                                get_normal_arms,
-                                get_css_actions_values_optimistic,
-                                iterations, samples)
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_normal_arms,
+                                      get_css_actions_values_optimistic,
+                                      eps=0.0),
+               iterations)
 
 plot_multiple(range(iterations),
               (proc_best_greedy_opt,
               "Greedy, Optimistic, Q1=5, step size=0.1"),
               (proc_best_eps01_css, "Eps01, step size=0.1"))
 
+
 # %% Ex 2.3 Nonstationary problems:
-
-
 def get_equal_normal_arms(number=10):
     return [NormalArm(0, 1) for _ in range(number)]
 
@@ -302,23 +284,24 @@ def normal_delta_mu():
 
 
 iterations = 1500
-samples = 200
+samples = 300
 # non_stationary, sample_mean
 rewards_nons_smean, proc_best_nons_smean = \
-                     experiment(lambda a, b:
-                                BanditEpsGreedy(a, b, eps=0.1,
-                                                delta_mu=binary_delta_mu),
-                                get_equal_normal_arms,
-                                get_sample_actions_values,
-                                iterations, samples)
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_equal_normal_arms,
+                                      get_sample_actions_values,
+                                      eps=0.1,
+                                      delta_mu=binary_delta_mu),
+               iterations)
+
 # non_stationary, constant step size
 rewards_nons_css, proc_best_nons_css = \
-                     experiment(lambda a, b:
-                                BanditEpsGreedy(a, b, eps=0.1,
-                                                delta_mu=binary_delta_mu),
-                                get_equal_normal_arms,
-                                get_css_actions_value,
-                                iterations, samples)
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_equal_normal_arms,
+                                      get_css_actions_value,
+                                      eps=0.1,
+                                      delta_mu=binary_delta_mu),
+               iterations)
 
 print("Nonstationary arms - step size is either 0.1 or -0.1")
 print("Eps-greedy algorithm with eps=0.1 and either:")
@@ -336,24 +319,24 @@ plot_multiple(range(iterations),
 # Random walk given by normal distributed steps:
 
 iterations = 1500
-samples = 200
+samples = 300
 # non_stationary, sample_mean
 rewards_nons_smean, proc_best_nons_smean = \
-                     experiment(lambda a, b:
-                                BanditEpsGreedy(a, b, eps=0.1,
-                                                delta_mu=normal_delta_mu),
-                                get_equal_normal_arms,
-                                get_sample_actions_values,
-                                iterations, samples)
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_equal_normal_arms,
+                                      get_sample_actions_values,
+                                      eps=0.1,
+                                      delta_mu=normal_delta_mu),
+               iterations)
 
-# non_stattionary, constant step size
+# non_stationary, constant step size
 rewards_nons_css, proc_best_nons_css = \
-                     experiment(lambda a, b:
-                                BanditEpsGreedy(a, b, eps=0.1,
-                                                delta_mu=normal_delta_mu),
-                                get_equal_normal_arms,
-                                get_css_actions_value,
-                                iterations, samples)
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_equal_normal_arms,
+                                      get_css_actions_value,
+                                      eps=0.1,
+                                      delta_mu=normal_delta_mu),
+               iterations)
 
 print("Nonstationary arms - step size is normally distributed.")
 print("Eps-greedy algorithm with eps=0.1 and either:")
@@ -370,38 +353,31 @@ plot_multiple(range(iterations),
 
 
 # %% UCB
-
 iterations = 1000
-samples = 2000
+samples = 400
 rewards_eps01_sam, proc_best_eps01_sam = \
-                     experiment(lambda a, b: BanditEpsGreedy(a, b, eps=0.1),
-                                get_normal_arms,
-                                get_sample_actions_values,
-                                iterations, samples)
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_normal_arms,
+                                      get_sample_actions_values, eps=0.1),
+               iterations)
 
 rewards_eps01_css, proc_best_eps01_css = \
-                     experiment(lambda a, b: BanditEpsGreedy(a, b, eps=0.1),
-                                get_normal_arms,
-                                get_css_actions_value,
-                                iterations, samples)
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_normal_arms,
+                                      get_css_actions_value, eps=0.1),
+               iterations)
 
 rewards_ucb_c2_sam, proc_best_ucb_c2_sam = \
-                     experiment(lambda a, b: UCB(a, b, c=2),
-                                get_normal_arms,
-                                get_sample_actions_values,
-                                iterations, samples)
+    experiment([UCB(get_normal_arms(), get_sample_actions_values(), c=2)
+                for _ in range(samples)], iterations)
 
 rewards_ucb_c2_css, proc_best_ucb_c2_css = \
-                     experiment(lambda a, b: UCB(a, b, c=2),
-                                get_normal_arms,
-                                get_css_actions_value,
-                                iterations, samples)
+    experiment([UCB(get_normal_arms(), get_css_actions_value(), c=2)
+                for _ in range(samples)], iterations)
 
 rewards_ucb_c1_css, proc_best_ucb_c1_css = \
-                     experiment(lambda a, b: UCB(a, b, c=1),
-                                get_normal_arms,
-                                get_css_actions_value,
-                                iterations, samples)
+    experiment([UCB(get_normal_arms(), get_css_actions_value(), c=1)
+                for _ in range(samples)], iterations)
 
 plot_multiple(range(iterations),
               (rewards_eps01_sam, "Eps01, sample"),
@@ -414,20 +390,15 @@ plot_multiple(range(iterations),
               (proc_best_eps01_sam, "Eps01, sample avg"),
               (proc_best_ucb_c2_sam, "UCB c=2, sample avg"))
 
+
 # %% Gradient Bandit Algorithms
-
-
 def get_normal_arms_mu4(number=10):
     arms_init = np.random.normal(4, 1, number)
     return [NormalArm(mu, 1) for mu in arms_init]
 
 
-def get_pref01_actions_values(number=10, estimate=0.0):
-    return [PreferenceActionValue(estimate) for _ in range(number)]
-
-
-def get_pref04_actions_values(number=10, estimate=0.0):
-    return [PreferenceActionValue(estimate, step_size=0.4)
+def get_pref_actions_values(number=10, estimate=0.0, step_size=0.1):
+    return [PreferenceActionValue(estimate, step_size=step_size)
             for _ in range(number)]
 
 
@@ -436,37 +407,39 @@ def zero_base():
 
 
 iterations = 1000
-samples = 500
+samples = 200
 rewards_grad_alf01_b, proc_best_grad_alf01_b = \
-                     experiment(lambda a, b: GradientBandit(a, b),
-                                get_normal_arms_mu4,
-                                get_pref01_actions_values,
-                                iterations, samples)
+    experiment([GradientBandit(get_normal_arms_mu4(),
+                               get_pref_actions_values())
+                for _ in range(samples)],
+               iterations)
 
 rewards_grad_alf04_b, proc_best_grad_alf04_b = \
-                     experiment(lambda a, b: GradientBandit(a, b),
-                                get_normal_arms_mu4,
-                                get_pref04_actions_values,
-                                iterations, samples)
-rewards_grad_alf01_nob, proc_best_grad_alf01_nob = \
-                     experiment(lambda a, b: GradientBandit(a, b,
-                                baseline=zero_base()),
-                                get_normal_arms_mu4,
-                                get_pref01_actions_values,
-                                iterations, samples)
-rewards_grad_alf04_nob, proc_best_grad_alf04_nob = \
-                     experiment(lambda a, b: GradientBandit(a, b,
-                                baseline=zero_base()),
-                                get_normal_arms_mu4,
-                                get_pref04_actions_values,
-                                iterations, samples)
+    experiment([GradientBandit(get_normal_arms_mu4(),
+                               get_pref_actions_values(step_size=0.4))
+                for _ in range(samples)],
+               iterations)
 
+rewards_grad_alf01_nob, proc_best_grad_alf01_nob = \
+    experiment([GradientBandit(get_normal_arms_mu4(),
+                               get_pref_actions_values(),
+                               baseline=zero_base())
+                for _ in range(samples)],
+               iterations)
+
+rewards_grad_alf04_nob, proc_best_grad_alf04_nob = \
+    experiment([GradientBandit(get_normal_arms_mu4(),
+                               get_pref_actions_values(step_size=0.4),
+                               baseline=zero_base())
+                for _ in range(samples)],
+               iterations)
 
 plot_multiple(range(iterations),
               (proc_best_grad_alf01_b, "Gradient, alfa=0.1, baseline"),
               (proc_best_grad_alf04_b, "Gradient, alfa=0.4, baseline"),
               (proc_best_grad_alf01_nob, "Gradient, alfa=0.1, no baseline"),
               (proc_best_grad_alf04_nob, "Gradient, alfa=0.1, no baseline"))
+
 
 # %% Bandits comparison
 # Bandit to compare - its parameter:
@@ -476,68 +449,58 @@ plot_multiple(range(iterations),
 #   gradient bandit - alfa
 
 # Figure 2.6
-
-
-def experiment_bandits(bandit_f, bandit_args, arms, action_values, iterations,
-                       sessions):
-    def experiment_b(b_args):
-        # bb = bandit_f(arms(), action_values(), **b_args)
-        # print(bb.eps)
-        return experiment(lambda a, b: bandit_f(a, b, **b_args),
-                          arms, action_values, iterations, sessions)
-
-    return [sum(rews)/len(rews)
-            for rews, proc_best in map(experiment_b, bandit_args)]
+def extract_average_rewards(outcomes):
+    return [sum(rews[0])/len(rews[0]) for rews in outcomes]
 
 
 xs = [2**e for e in range(-7, 3)]
 iterations = 1000
 samples = 200
-bandits_args = [{'eps': ep} for ep in xs[:6]]
-rewards_epsg = experiment_bandits(BanditEpsGreedy,
-                                  bandits_args,
-                                  get_normal_arms,
-                                  get_sample_actions_values,
-                                  iterations, samples)
+rewards_epsg = extract_average_rewards([
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_normal_arms,
+                                      get_sample_actions_values, eps=eps),
+               iterations)
+    for eps in xs[:6]
+])
 # plot_multiple(xs[:6], (rewards_epsg, "Eps-greedy, eps"))
 
-bandits_args = [{'c': c} for c in xs[3:]]
-rewards_ucb = experiment_bandits(UCB,
-                                 bandits_args,
-                                 get_normal_arms,
-                                 get_sample_actions_values,
-                                 iterations, samples)
+rewards_ucb = extract_average_rewards([
+    experiment([UCB(get_normal_arms(), get_sample_actions_values(), c=c)
+                for _ in range(samples)], iterations)
+    for c in xs[3:]
+])
 # plot_multiple(xs[3:], (rewards_ucb, "UCB, c"))
 
+
 # gradient
-
-
-def get_pref_actions_values_al(alfa, number=10, estimate=0.0):
-    return [PreferenceActionValue(estimate, step_size=alfa)
-            for _ in range(number)]
-
-
-rewards_grad = [experiment(GradientBandit, get_normal_arms,
-                           lambda: get_pref_actions_values_al(alfa),
-                           iterations, samples)[0] for alfa in xs[2:]]
-rewards_grad = [sum(rews)/len(rews) for rews in rewards_grad]
+rewards_grad = extract_average_rewards([
+    experiment([GradientBandit(get_normal_arms(),
+                               get_pref_actions_values(step_size=alpha))
+                for _ in range(samples)],
+               iterations)
+    for alpha in xs[2:]
+])
 # plot_multiple(xs[2:], (rewards_grad, "Gradient, alfa"))
+
+
 # optimistic:
-
-
 def get_css_actions_values_est(estimate, number=10):
     return get_css_actions_value(number, estimate=estimate)
 
 
-rewards_greed_opt = [experiment(lambda a, b: BanditEpsGreedy(a, b, eps=0.0),
-                                get_normal_arms,
-                                lambda: get_css_actions_values_est(q0),
-                                iterations, samples)[0] for q0 in xs[5:]]
-rewards_greed_opt = [sum(rews)/len(rews) for rews in rewards_greed_opt]
+rewards_greed_opt = extract_average_rewards([
+    experiment(get_eps_greedy_bandits(samples,
+                                      get_normal_arms,
+                                      lambda: get_css_actions_values_est(q0),
+                                      eps=0.0),
+               iterations)
+    for q0 in xs[5:]
+])
 # plot_multiple(xs[5:], (rewards_greed_opt, "Greedy optimistic, Q0"))
 
 
-plt.subplots(figsize=(8, 6))
+plt.subplots(figsize=(12, 9))
 plt.semilogx(xs[5:], rewards_greed_opt, label="Greedy optimistic, Q0", basex=2)
 plt.plot(xs[2:], rewards_grad, label="Gradient, alfa")
 plt.plot(xs[3:], rewards_ucb, label="UCB, c")
