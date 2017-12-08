@@ -5,8 +5,6 @@ import math
 import matplotlib.pyplot as plt
 %matplotlib inline
 
-# TODO:
-# refactor
 
 # %% Classes:
 # %% Arms:
@@ -227,7 +225,8 @@ outcome = [
     for eps in [0.1, 0.01, 0.0]
 ]
 
-# %% Eps vs greedy
+# %% Eps vs Greedy
+# Figure 2.2
 
 plot_multiple(range(iterations),
               (outcome[0][0], "Eps01"),
@@ -241,6 +240,7 @@ plot_multiple(range(iterations),
 
 
 # %% Optimistic Greedy vs Eps Greedy 0.1
+# Figure 2.3
 def get_css_actions_value(number=10, estimate=0.0, step_size=0.1):
     return [ConstantStepSizeActionValue(estimate=estimate, step_size=step_size)
             for _ in range(number)]
@@ -353,6 +353,7 @@ plot_multiple(range(iterations),
 
 
 # %% UCB
+# Figure 2.4
 iterations = 1000
 samples = 400
 rewards_eps01_sam, proc_best_eps01_sam = \
@@ -392,6 +393,7 @@ plot_multiple(range(iterations),
 
 
 # %% Gradient Bandit Algorithms
+# Figure 2.5
 def get_normal_arms_mu4(number=10):
     arms_init = np.random.normal(4, 1, number)
     return [NormalArm(mu, 1) for mu in arms_init]
@@ -442,13 +444,13 @@ plot_multiple(range(iterations),
 
 
 # %% Bandits comparison
+# Figure 2.6
 # Bandit to compare - its parameter:
 #   Eps-greedy - eps
 #   greedy with optimist initialization, alfa = 0.1 - Q0 (initialization value)
 #   UCB - c
 #   gradient bandit - alfa
 
-# Figure 2.6
 def extract_average_rewards(outcomes):
     return [sum(rews[0])/len(rews[0]) for rews in outcomes]
 
