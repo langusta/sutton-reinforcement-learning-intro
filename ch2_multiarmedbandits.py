@@ -54,7 +54,7 @@ class ActionValue:
     def update(self, target):
         self.use()
         self.estimate = self.estimate + \
-            self.step_size()*(target - self.estimate)
+            self.step_size() * (target - self.estimate)
 
     def __call__(self):
         return self.estimate
@@ -66,7 +66,7 @@ class SampleAverageActionValue(ActionValue):
         ActionValue.__init__(self, estimate)
 
     def step_size(self):
-        return 1/self.n
+        return 1 / self.n
 
 
 class ConstantStepSizeActionValue(ActionValue):
@@ -82,7 +82,7 @@ class ConstantStepSizeActionValue(ActionValue):
 class PreferenceActionValue(ConstantStepSizeActionValue):
     def update(self, target):
         self.use()
-        self.estimate = self.estimate + self.step_size()*target
+        self.estimate = self.estimate + self.step_size() * target
 
 
 # %% Bandit
@@ -141,7 +141,7 @@ class UCB(Bandit):
         if min(ns) == 0:
             return ns.index(0)
         else:
-            ucb = [av()+self.c*math.sqrt(math.log(iteration+1)/av.n)
+            ucb = [av() + self.c * math.sqrt(math.log(iteration + 1) / av.n)
                    for av in self.action_values]
             return ucb.index(max(ucb))
 
@@ -155,7 +155,7 @@ class GradientBandit(Bandit):
 
     def policy_probs(self):
         pref = np.exp([av() for av in self.action_values])
-        return pref/sum(pref)
+        return pref / sum(pref)
 
     def choose_arm(self, iteration):
         pref = self.policy_probs()
@@ -165,10 +165,10 @@ class GradientBandit(Bandit):
         index = self.choose_arm(iteration)
         reward = self.arms[index].reward()
         self.baseline.update(reward)
-        prefs = (-1)*self.policy_probs()
+        prefs = (-1) * self.policy_probs()
         prefs[index] += 1
         for i in range(len(self.action_values)):
-            self.action_values[i].update((reward - self.baseline())*prefs[i])
+            self.action_values[i].update((reward - self.baseline()) * prefs[i])
 
         # line below makes most sense in case of nonstationary arms
         if_best = self.arms[index]() == max([arm() for arm in self.arms])
@@ -187,7 +187,7 @@ def experiment(bandits, iterations=1000):
         rewards, proc_best = bandit.simulate(iterations)
         cum_rewards += rewards
         cum_proc_best += proc_best
-    return cum_rewards/len(bandits), cum_proc_best/len(bandits)
+    return cum_rewards / len(bandits), cum_proc_best / len(bandits)
 
 
 def plot_multiple(x, *args):
@@ -276,7 +276,7 @@ def get_equal_normal_arms(number=10):
 
 
 def binary_delta_mu():
-    return 0.1*(1 if np.random.rand() < 0.5 else -1)
+    return 0.1 * (1 if np.random.rand() < 0.5 else -1)
 
 
 def normal_delta_mu():
@@ -452,7 +452,7 @@ plot_multiple(range(iterations),
 #   gradient bandit - alfa
 
 def extract_average_rewards(outcomes):
-    return [sum(rews[0])/len(rews[0]) for rews in outcomes]
+    return [sum(rews[0]) / len(rews[0]) for rews in outcomes]
 
 
 xs = [2**e for e in range(-7, 3)]
