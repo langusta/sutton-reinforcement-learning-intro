@@ -1,8 +1,13 @@
 # Chapter 4. Dynamic programming
 import numpy as np
+import math
+from itertools import product
+from collections import namedtuple
+import matplotlib.pyplot as plt
+%matplotlib inline
 
 
-# %% Figure 4.2: Gridworld exmaple
+# %% Figure 4.1: Gridworld exmaple
 # actions:
 #           0 (up)
 # 3 (left) [agent] 1 (right)
@@ -99,3 +104,156 @@ values.reshape((4, 4)).round()
 #        [-14., -18., -20., -20.],
 #        [-20., -20., -18., -14.],
 #        [-22., -20., -14.,   0.]])
+
+
+# %% Figure 4.2
+# Jack's car rental
+some_ideas = """
+    v(s) = sum_{s',r} p(s',r|s,a)(r+gamma*v(s'))
+    is equivalent to:
+    v(s) = sum_{r} (r * p(r|s,a)) + gamma * sum_{s'} (p(s'|s,a) * v(s'))
+    then:
+    r * p(r|s,a) = 10 * total_requests * p(total_requests|s,a) - 2 * abs(a)
+    so we could precompute:
+        p(total_requests|s,a) == p(total_requests|s + (-a, a)) == p_requests
+            total requests depend only on (s + (-a, a))
+            total_requests = 0, 1, 2, ..., 40 == max_cars * 2
+    and
+        p(s'|s,a) == p(s'|s + (-a, a)) == p_state
+    then in the update_value function we can iterate only through states
+
+    We need to remember that there may be states where the business is closed,
+    because there are not enough cars to rent. They should also acknowledged.
+
+    Hmm, after look ing at the v(s) = sum... equation it seems we don't have to
+    care because the value and reward in those states is 0.
+"""
+
+
+def poisson_prob(k, l):
+    return (l ** k) * np.exp(-l) / math.factorial(k)
+
+
+max_cars = 21  # should be 20 but we want range(max_cars) to include 20
+PoissonParams = namedtuple('PoissonParams', ['req', 'ret'])
+poiss1 = PoissonParams(3, 3)
+poiss2 = PoissonParams(4, 2)
+
+
+def precompute_probs():
+    p_state = np.zeros((max_cars,) * 4)
+    p_requests = np.zeros((max_cars * 2 - 1, max_cars, max_cars))
+
+    # let s = (s1, s2) -> sp = (sp1, sp2)
+    # location 1: req1, ret1
+    # location 2: req2, ret2
+
+    for req1, ret1 in product(range(max_cars), range(max_cars)):
+        for req2, ret2 in product(range(max_cars), range(max_cars)):
+            for s1, s2 in product(range(req1, max_cars),
+                                  range(req2, max_cars)):
+                prob = (poisson_prob(req1, poiss1.req) *
+                        poisson_prob(ret1, poiss1.ret) *
+                        poisson_prob(req2, poiss2.req) *
+                        poisson_prob(ret2, poiss2.ret))
+                sp1 = min(s1 - req1 + ret1, 20)
+                sp2 = min(s2 - req2 + ret2, 20)
+                p_state[s1, s2, sp1, sp2] += prob
+                p_requests[req1 + req2, s1, s2] += prob
+
+    return p_state, p_requests
+
+
+def load_probs():
+    try:
+        probs = np.load('ch4_car_rental_probs.npz')
+        return probs['p_state'], probs['p_requests']
+    except:
+        p_state, p_requests = precompute_probs()
+        np.savez('ch4_car_rental_probs.npz',
+                 p_state=p_state, p_requests=p_requests)
+        return p_state, p_requests
+
+
+p_state, p_requests = load_probs()
+# # Sanity checks:
+# p_state[0, 0, 0, 0]
+# # should equal:
+# zeros = (poisson_prob(0, 3) * poisson_prob(0, 4) * poisson_prob(0, 3)
+#          * poisson_prob(0, 2))
+# zeros
+# p_requests[0, 0, 0]
+# # should be tiny bit less then:
+# zeros = (poisson_prob(0, 3) * poisson_prob(0, 4))
+# zeros
+
+
+def update_value(s1, s2, a, v, gamma=0.9):
+    """
+    implements:
+        sum_{s',r} p(s',r|s,a)(r+gamma*v(s'))
+    but breaks the sum into:
+        v(s) = sum_{r} (r * p(r|s,a)) + gamma * sum_{s'} (p(s'|s,a) * v(s'))
+    see variable some_ideas above.
+    """
+    reward_update = 0
+    for total_requests in range(2 * max_cars - 1):
+        reward_update += ((10 * total_requests - 2 * np.abs(a)) *
+                          p_requests[total_requests, s1 - a, s2 + a])
+    value_update = 0
+    for sp1, sp2 in product(range(max_cars), range(max_cars)):
+        value_update += p_state[s1 - a, s2 + a, sp1, sp2] * v[sp1, sp2]
+    return reward_update + gamma * value_update
+
+# init:
+#   policy <- 0 for all s
+#   v <- 0 for all s
+pi = np.zeros((max_cars, max_cars), dtype=int)
+v = np.zeros((max_cars, max_cars))
+np.set_printoptions(precision=2, suppress=True, linewidth=150)
+
+value_functions = []
+policies = []
+# policy evaluation:
+while True:
+    while True:
+        delta = 0
+        for s1 in range(max_cars):
+            for s2 in range(max_cars):
+                v_ = v[s1, s2]
+                action = pi[s1, s2]
+                v[s1, s2] = update_value(s1, s2, action, v)
+                delta = max(delta, np.abs(v_ - v[s1, s2]))
+        print("delta: ", np.round(delta, 2))
+        if delta < 0.01:
+            break
+    value_functions.append(v.copy())
+
+    # policy improvement:
+    policy_stable = True
+    for s1 in range(max_cars):
+        for s2 in range(max_cars):
+            old_action = pi[s1, s2]
+            actions = [a for a in range(-5, 6)
+                       if s1 - a >= 0 and s1 - a <= 20
+                       and s2 + a >= 0 and s2 + a <= 20]
+            qs = np.array([update_value(s1, s2, a, v) for a in actions])
+            pi[s1, s2] = actions[qs.argmax()]
+            if old_action != pi[s1, s2]:
+                policy_stable = False
+    policies.append(pi.copy())
+    if policy_stable:
+        break
+
+
+for policy in policies[:-1]:
+    plt.subplots(figsize=(9, 7))
+    pp = plt.imshow(policy, origin='lower', interpolation='none')
+    plt.colorbar(pp, orientation='vertical')
+    plt.show()
+
+# It looks reasonably similar but not exactly the same.
+# There might be some subtle differences in how I interpret the rules.
+# I see no point in spending additional hours on looking for them.
+# It is very suspicious that lower right corner in Sutton's plots is -4
+# rather then -5..
