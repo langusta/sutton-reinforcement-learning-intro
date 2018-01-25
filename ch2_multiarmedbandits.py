@@ -3,13 +3,13 @@ import numpy as np
 import math
 # from multiprocessing import Pool
 import matplotlib.pyplot as plt
-%matplotlib inline
+from IPython import get_ipython
+
+get_ipython().magic(u'matplotlib inline')
 
 
 # %% Classes:
 # %% Arms:
-
-
 class Arm(object):
     """ Multi armed bandit arm template"""
     def __init__(self):

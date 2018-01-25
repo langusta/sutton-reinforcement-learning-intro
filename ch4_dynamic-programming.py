@@ -4,7 +4,9 @@ import math
 from itertools import product
 from collections import namedtuple
 import matplotlib.pyplot as plt
-%matplotlib inline
+from IPython import get_ipython
+
+get_ipython().magic(u'matplotlib inline')
 
 
 # %% Figure 4.1: Gridworld exmaple
