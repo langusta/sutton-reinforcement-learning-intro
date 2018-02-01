@@ -111,9 +111,9 @@ values.reshape((4, 4)).round()
 # %% Figure 4.2
 # Jack's car rental
 some_ideas = """
-    v(s) = sum_{s',r} p(s',r|s,a)(r+gamma*v(s'))
+    q(s,a) = sum_{s',r} p(s',r|s,a)(r+gamma*v(s'))
     is equivalent to:
-    v(s) = sum_{r} (r * p(r|s,a)) + gamma * sum_{s'} (p(s'|s,a) * v(s'))
+    q(s,a) = sum_{r} (r * p(r|s,a)) + gamma * sum_{s'} (p(s'|s,a) * v(s'))
     then:
     r * p(r|s,a) = 10 * total_requests * p(total_requests|s,a) - 2 * abs(a)
     so we could precompute:
@@ -195,7 +195,7 @@ def update_value(s1, s2, a, v, gamma=0.9):
     implements:
         sum_{s',r} p(s',r|s,a)(r+gamma*v(s'))
     but breaks the sum into:
-        v(s) = sum_{r} (r * p(r|s,a)) + gamma * sum_{s'} (p(s'|s,a) * v(s'))
+        q(s,a) = sum_{r} (r * p(r|s,a)) + gamma * sum_{s'} (p(s'|s,a) * v(s'))
     see variable some_ideas above.
     """
     reward_update = 0
@@ -259,3 +259,84 @@ for policy in policies[:-1]:
 # I see no point in spending additional hours on looking for them.
 # It is very suspicious that lower right corner in Sutton's plots is -4
 # rather then -5..
+
+# %% Figure 4.3
+idea = """
+We will use similar approach as before:
+    q(s,a) = sum_{s',r} p(s',r|s,a)(r+gamma*v(s'))
+    is equivalent to:
+    q(s,a) = sum_{r} (r * p(r|s,a)) + gamma * sum_{s'} (p(s'|s,a) * v(s'))
+and do it with matrx multiplication.
+Where:
+    sum_{r} (r * p(r|s,a)) = 1 * prob(winning|s,a)
+and:
+    sum_{s'} (p(s'|s,a) * v(s')) =
+        p_h * v(s + a) +
+        (1 - p_h) * v(s - a)
+"""
+
+
+def figure_4_3(p_h, acc=4):
+    # rewards = rewards(state, action)
+    def gen_rewards(p):
+        rewards = np.zeros((101, 51))
+        for state in range(50, 100):
+            rewards[state, 100 - state] = p
+        return rewards
+
+    # p(s'|s,a):
+    #   state_probs[s, a, s'] = p(s'|s,a)
+    def gen_state_probs(p):
+        state_probs = np.zeros((101, 51, 101))
+        # terminal states:
+        state_probs[0, :, 0] = 1
+        state_probs[100, :, 100] = 1
+        # non-terminal states
+        for state in range(1, 100):
+            for action in range(51):
+                if state + action < 101 and state >= action:
+                    state_probs[state, action, state + action] = p
+                    state_probs[state, action, state - action] = 1 - p
+        return state_probs
+
+    rewards = gen_rewards(p_h)
+    state_probs = gen_state_probs(p_h)
+    values = np.zeros(101)
+    gamma = 1
+    remember = [1, 2, 3, 32]
+    i = 1
+    history = []
+    policy = 0  # 0 is a placeholder
+    q = 0  # a placeholder as well
+
+    while True:
+        v_ = values
+        q = rewards + gamma * np.tensordot(state_probs, values, axes=1)
+        values = q.max(axis=1)
+        policy = q.round(acc).argmax(-1)
+        if i in remember:
+            history.append(values)
+        i += 1
+        if abs(v_ - values).max() < 0.001 and i > 100:
+            print("V inc:", abs(v_ - values).max())
+            print("i: ", i)
+            history.append(values)
+            break
+
+    plt.subplots(figsize=(8, 6))
+    for i in range(len(history)):
+        plt.plot(range(1, 100), history[i][1:100])
+    plt.show()
+
+    plt.plot(range(1, 100), policy[1:100])
+    plt.subplots(figsize=(14, 11))
+    pp = plt.imshow(q.round(acc), origin='lower', interpolation='none')
+    plt.colorbar(pp, orientation='vertical')
+    plt.show()
+
+# it's funny how much role accuracy plays here:
+figure_4_3(0.4, acc=100)
+figure_4_3(0.4, acc=4)
+figure_4_3(0.25)
+figure_4_3(0.55)
+figure_4_3(0.5)
